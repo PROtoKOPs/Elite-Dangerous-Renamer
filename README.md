@@ -1,18 +1,18 @@
 Elite Dangerous Renamer
 
-Устали искать файлы типа Screenshot_0042.png и вспоминать, где вы видели ту удивительную двойную черную дыру или обнаружили неоткрытую звезду Вольфа-Райе? Elite Dangerous Renamer станет вашим личным помощником, который быстро и аккуратно организует вашу медиатеку, пока вы исследуете космические просторы.
+Tired of searching through files like Screenshot_0042.png and trying to remember where you saw that amazing double black hole or discovered an undiscovered Wolf-Rayet star? Elite Dangerous Renamer will be your personal assistant, quickly and accurately organizing your media library while you explore the reaches of space.
 
-Главные фишки:
+Key Features:
 
-* Программа отслеживает ваше местоположение. Если вы приземлились на планету, её координаты появятся в названии. Если вы летите в орбитальном полёте, номер планеты будет указан после названия системы.
-* Абсолютная свобода программного обеспечения: используйте любую программу для создания скриншотов. Если файл попадает в «наблюдаемую» папку, его имя автоматически изменится.
-* Галерея в приложении: Не покидая программы, вы можете наслаждаться своими фотографиями. Встроенный инструмент управления позволяет легко просматривать и удалять изображения.
-* Утилита имеет незначительный вес, проста в установке и использовании, а также не нагружает процессор.
+* The program tracks your location. If you land on a planet, its coordinates will appear in the name. If you are in orbital flight, the planet number will be indicated after the system name.
+* Absolute software freedom: use any program to take screenshots. If a file enters the "watched" folder, its name will automatically change.
+* In-app Gallery: Enjoy your photos without leaving the program. The built-in management tool allows you to easily view and delete images.
+* The utility is lightweight, easy to install and use, and does not strain the CPU.
 
-Быстрый старт:
+Quick Start:
 
-Просто укажите программе путь к вашим скриншотам и папке с логами (обычно это %userprofile%\Saved Games\Frontier Developments\Elite Dangerous). После этого нажмите Сохранить и возвращайтесь в кокпит.
+Simply point the program to the path of your screenshots and logs folder (usually %userprofile%\Saved Games\Frontier Developments\Elite Dangerous). After that, click Save and head back to the cockpit.
 
-Ваша история заслуживает красивых имен. Fly safe, Commander! o7
+Your story deserves beautiful names. Fly safe, Commander! o7
 
-Часть кода написана нейросетью под строгим надзором живого пилота. Баги (если они есть) — это восстание машин, фичи - результат совместной работы.
+Part of the code was written by an AI under the strict supervision of a live pilot. Bugs (if any) are a machine uprising; features are the result of collaboration.
