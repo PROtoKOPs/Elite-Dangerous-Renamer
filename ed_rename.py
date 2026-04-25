@@ -11,7 +11,7 @@ from watchdog.events import FileSystemEventHandler
 import subprocess
 import io
 import sqlite3
-import requests  # pip install requests
+import requests
 import webbrowser
 from PIL import Image, ImageTk
 from threading import Thread
@@ -27,7 +27,7 @@ except ImportError:
     winerror = None
 
 # ----- ВЕРСИЯ ПРИЛОЖЕНИЯ -----
-VERSION = "0.3"
+VERSION = "0.5"
 GITHUB_REPO = "PROtoKOPs/Elite-Dangerous-Renamer"
 CONFIG_FILE = "ed_config.json"
 CACHE_DB = "thumbs_cache.db"
@@ -85,6 +85,7 @@ LANGS = {
         "no": "НЕТ",
         "format_order": "НАСТРОИТЬ ПОРЯДОК",
         "order_title": "Настройка порядка",
+        "reset": "СБРОС",
         "up": "Выше",
         "down": "Ниже",
         "field_date": "Дата",
@@ -134,6 +135,7 @@ LANGS = {
         "no": "NO",
         "format_order": "CONSTRUCT ORDER",
         "order_title": "Naming Order",
+        "reset": "RESET",
         "up": "Up",
         "down": "Down",
         "field_date": "Date",
@@ -154,12 +156,14 @@ class OrderWindow:
     def __init__(self, parent, current_order, lang_keys):
         self.win = tk.Toplevel(parent)
         self.win.title(lang_keys['order_title'])
-        self.win.geometry("300x350")
+        self.win.geometry("340x370") 
+        self.win.resizable(False, False)
         self.win.configure(bg="#1e1e1e")
         self.win.grab_set()
         
         self.lang_keys = lang_keys
         self.order = list(current_order)
+        self.default_order = ["date", "time", "body", "coords"]
         
         self.display_names = {
             "date": lang_keys['field_date'],
@@ -176,17 +180,25 @@ class OrderWindow:
         self.refresh_list()
 
         btn_frame = tk.Frame(self.win, bg="#1e1e1e")
-        btn_frame.pack(fill="x", pady=10)
+        btn_frame.pack(pady=10)
+
+        tk.Button(btn_frame, text=lang_keys['up'], command=self.move_up, bg="#444", fg="white", width=9).pack(side="left", padx=5)
         
-        tk.Button(btn_frame, text=lang_keys['up'], command=self.move_up, bg="#444", fg="white", width=8).pack(side="left", padx=20)
-        tk.Button(btn_frame, text=lang_keys['down'], command=self.move_down, bg="#444", fg="white", width=8).pack(side="right", padx=20)
+        tk.Button(btn_frame, text=lang_keys.get('reset', 'RESET'), command=self.reset_order, 
+                  bg="#333", fg="#ff8c00", font=("Segoe UI", 8, "bold"), width=9).pack(side="left", padx=5)
         
-        tk.Button(self.win, text=lang_keys['yes'], command=self.win.destroy, bg="#ff8c00", fg="black", font=("Segoe UI", 9, "bold"), width=15).pack(pady=10)
+        tk.Button(btn_frame, text=lang_keys['down'], command=self.move_down, bg="#444", fg="white", width=9).pack(side="left", padx=5)
+
+        tk.Button(self.win, text=lang_keys['yes'], command=self.win.destroy, bg="#ff8c00", fg="black", font=("Segoe UI", 9, "bold"), width=15).pack(pady=15)
 
     def refresh_list(self):
         self.listbox.delete(0, tk.END)
         for item in self.order:
             self.listbox.insert(tk.END, self.display_names.get(item, item))
+
+    def reset_order(self):
+        self.order = list(self.default_order)
+        self.refresh_list()
 
     def move_up(self):
         idx = self.listbox.curselection()
@@ -248,38 +260,70 @@ class EliteJournalReader:
         self.current_system = "Unknown"
         self.current_body = ""
         self.coords = ""
+        self.current_station = ""
 
     def update_state(self):
         try:
             if not os.path.exists(self.logs_dir): return
+            
             logs = [os.path.join(self.logs_dir, f) for f in os.listdir(self.logs_dir) if f.startswith('Journal.') and f.endswith('.log')]
-            if not logs: return
-            latest_log = max(logs, key=os.path.getmtime)
-            with open(latest_log, 'r', encoding='utf-8') as f:
-                for line in f:
+            if logs:
+                latest_log = max(logs, key=os.path.getmtime)
+                with open(latest_log, 'r', encoding='utf-8') as f:
+                    for line in f:
+                        try:
+                            data = json.loads(line)
+                            event = data.get('event')
+                            
+                            if event in ['Location', 'FSDJump', 'CarrierJump']:
+                                self.current_system = data.get('StarSystem', self.current_system)
+                                self.current_body = data.get('Body', "")
+                                self.current_station = data.get('StationName', "") if data.get('Docked') else ""
+                                self.coords = ""
+
+                            elif event == 'Docked':
+                                self.current_station = data.get('StationName', "")
+                                self.coords = ""
+                            elif event == 'Undocked':
+                                self.current_station = ""
+
+                            elif event in ['ApproachBody', 'Touchdown']:
+                                self.current_body = data.get('Body', self.current_body)
+                            elif event == 'Liftoff' or event == 'LeaveBody':
+                                if event == 'LeaveBody': self.current_body = ""
+                                self.coords = ""
+
+                        except: continue
+
+            status_path = os.path.join(self.logs_dir, 'Status.json')
+            if os.path.exists(status_path):
+                with open(status_path, 'r', encoding='utf-8') as f:
                     try:
-                        data = json.loads(line)
-                        event = data.get('event')
-                        if event in ['Location', 'FSDJump', 'CarrierJump']:
-                            self.current_system = data.get('StarSystem', self.current_system)
-                            self.current_body = data.get('Body', "")
-                            self.coords = "" 
-                        elif event in ['ApproachBody', 'Touchdown']:
-                            self.current_body = data.get('Body', self.current_body)
-                        elif event == 'Liftoff': self.coords = ""
-                        elif event == 'LeaveBody': self.current_body = ""; self.coords = ""
-                        if 'Latitude' in data and 'Longitude' in data and event != 'Liftoff':
-                            lat, lon = round(data['Latitude'], 2), round(data['Longitude'], 2)
+                        status_data = json.load(f)
+                        if 'Latitude' in status_data and 'Longitude' in status_data and not self.current_station:
+                            lat = round(status_data['Latitude'], 2)
+                            lon = round(status_data['Longitude'], 2)
                             self.coords = f"[{lat}, {lon}]"
-                    except: continue
-        except: pass
+                            
+                            if 'BodyName' in status_data:
+                                self.current_body = status_data['BodyName']
+                    except:
+                        pass
+                        
+        except Exception as e:
+            print(f"Update state error: {e}")
 
     def get_info(self):
         self.update_state()
+        
+        display_coords = self.coords
+        if self.current_station:
+            display_coords = f"({self.current_station})"
+
         return {
             "system": re.sub(r'[\\/*?:"<>|]', "", self.current_system),
             "body": re.sub(r'[\\/*?:"<>|]', "", self.current_body.replace(self.current_system, "").strip()),
-            "coords": self.coords,
+            "coords": display_coords,
             "date": time.strftime("%Y-%m-%d"),
             "time": time.strftime("%H-%M-%S")
         }
@@ -314,10 +358,9 @@ class App:
             Thread(target=self.check_for_updates, args=(True,), daemon=True).start()
 
     def check_for_updates(self, silent=True):
-        """Логика проверки через GitHub API"""
         l = LANGS[self.config['lang']]
         try:
-            # Запрос к API GitHub для получения последнего релиза
+
             response = requests.get(f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest", timeout=5)
             if response.status_code == 200:
                 data = response.json()
@@ -325,10 +368,8 @@ class App:
                 
                 if latest_v != VERSION:
                     if silent:
-                        # Показываем плашку в интерфейсе
                         self.root.after(0, lambda: self.show_update_notification(latest_v))
                     else:
-                        # Показываем диалоговое окно (если нажали кнопку вручную)
                         if messagebox.askyesno(l['upd_found'], l['upd_msg'].format(v=latest_v)):
                             webbrowser.open(data['html_url'])
                 elif not silent:
@@ -339,7 +380,6 @@ class App:
             if not silent: messagebox.showerror("Error", l['upd_error'])
 
     def show_update_notification(self, version):
-        """Оранжевая плашка уведомления внизу окна"""
         l = LANGS[self.config['lang']]
         upd_bar = tk.Frame(self.root, bg="#ff8c00", height=30)
         upd_bar.pack(fill="x", side="bottom")
@@ -384,7 +424,6 @@ class App:
         lang_win.protocol("WM_DELETE_WINDOW", self.root.quit)
         tk.Label(lang_win, text="Choose your language:\nВыберите язык:", fg="white", bg="#1e1e1e").pack(pady=20)
         def set_lang(l):
-            # По умолчанию СОРТИРОВКА и ИСТОРИЯ выключены (False)
             self.config = {
                 "lang": l, 
                 "order": ["date", "time", "body", "coords"], 
@@ -402,11 +441,19 @@ class App:
         l = LANGS[self.config['lang']]
         self.root.deiconify() 
         self.root.title(l['title'].format(VERSION=VERSION))
-        try:
-            icon_path = resource_path("Edr.ico")
-            img = ImageTk.PhotoImage(Image.open(icon_path))
-            self.root.iconphoto(False, img)
-        except: pass
+        icon_path = resource_path("Edr.ico")
+        if os.path.exists(icon_path):
+            try:
+                self.root.iconbitmap(icon_path)
+                import ctypes
+                myappid = f'proto.edrenamer.v{VERSION}' 
+                ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(myappid)
+            except Exception as e:
+                try:
+                    img = ImageTk.PhotoImage(Image.open(icon_path))
+                    self.root.tk.call('wm', 'iconphoto', self.root._w, img)
+                except:
+                    print(f"Icon loading failed: {e}")
         self.root.geometry("950x750")
         self.root.configure(bg="#1e1e1e")
         self.show_main_interface()
@@ -655,6 +702,7 @@ class App:
         l = LANGS[self.config['lang']]
         settings_win = tk.Toplevel(self.root); settings_win.title(l['settings'])
         settings_win.geometry("500x850"); settings_win.configure(bg="#1e1e1e"); settings_win.grab_set()
+        settings_win.resizable(False, False)
         if is_initial: settings_win.protocol("WM_DELETE_WINDOW", self.root.quit)
 
         container = tk.Frame(settings_win, bg="#1e1e1e"); container.pack(expand=True, fill="both", padx=30, pady=20)
@@ -683,7 +731,6 @@ class App:
         for text, key in [(l['add_date'], "show_date"), (l['add_time'], "show_time"), (l['add_body'], "show_body"), (l['add_coords'], "show_coords")]:
             tk.Checkbutton(checks_frame, text=text, variable=vars[key], bg="#1e1e1e", fg="#e0e0e0", selectcolor="#333").pack(anchor="w")
         
-        # Кнопка ПОРЯДОК теперь под чекбоксами
         self.temp_order = list(self.config.get("order", ["date", "time", "body", "coords"]))
         def open_order():
             win = OrderWindow(settings_win, self.temp_order, l)
@@ -694,11 +741,9 @@ class App:
 
         tk.Label(container, text=l['folders_label'], fg="#ff8c00", bg="#1e1e1e", font=("Segoe UI", 10, "bold")).pack(anchor="w", pady=(15, 5))
         tk.Checkbutton(container, text=l['sort_folders'], variable=vars["use_folders"], bg="#1e1e1e", fg="#e0e0e0", selectcolor="#333").pack(anchor="w")
-        
-        # Настройка истории с предупреждением
+
         tk.Checkbutton(container, text=l['load_history'], variable=vars["load_history"], bg="#1e1e1e", fg="#e0e0e0", selectcolor="#333", wraplength=400, justify="left").pack(anchor="w", pady=5)
 
-        # Селектор формата конвертации
         conv_frame = tk.Frame(container, bg="#1e1e1e")
         conv_frame.pack(anchor="w", fill="x", pady=5)
         tk.Label(conv_frame, text=l['convert_label'], fg="#aaa", bg="#1e1e1e").pack(side="left")
@@ -790,27 +835,22 @@ class Handler(FileSystemEventHandler):
         if not os.path.exists(path): return
         
         info = self.app.reader.get_info()
-        
-        # 1. Собираем только дату и время (то, что идет ПЕРЕД скобками)
+
         prefix_parts = []
         if self.app.config.get("show_date"): prefix_parts.append(info['date'])
         if self.app.config.get("show_time"): prefix_parts.append(info['time'])
         prefix = " ".join(filter(None, prefix_parts))
-        
-        # 2. Формируем содержимое скобок (Система — Планета — Координаты)
+
         inner_parts = [info['system']]
-        
-        # Добавляем планету через тире, если она есть и включена в настройках
+
         if self.app.config.get("show_body") and info['body']:
             inner_parts.append(f"— {info['body']}")
-            
-        # Добавляем координаты, если они есть и включены
+
         if self.app.config.get("show_coords") and info['coords']:
             inner_parts.append(f"— {info['coords']}")
             
         inner_content = " ".join(filter(None, inner_parts))
-        
-        # 3. Собираем финальное имя: "Дата Время (Система — Тело)"
+
         if prefix:
             new_fn = f"{prefix} ({inner_content})"
         else:
