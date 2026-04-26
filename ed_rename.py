@@ -27,7 +27,7 @@ except ImportError:
     winerror = None
 
 # ----- ВЕРСИЯ ПРИЛОЖЕНИЯ -----
-VERSION = "1.0"
+VERSION = "1.1"
 GITHUB_REPO = "PROtoKOPs/Elite-Dangerous-Renamer"
 CONFIG_FILE = "ed_config.json"
 CACHE_DB = "thumbs_cache.db"
@@ -94,6 +94,10 @@ LANGS = {
         "field_coords": "Координаты",
         "convert_label": "Конвертировать в:",
         "none": "Нет",
+"time_mode_label": "ФОРМАТ ВРЕМЕНИ:",
+"time_local": "Местное",
+"time_utc": "Игровое (UTC)",
+"add_cmdr": "Добавлять имя командира",
         "check_updates": "ПРОВЕРИТЬ ОБНОВЛЕНИЯ",
         "upd_found": "Доступно обновление!",
         "upd_msg": "Найдена новая версия {v}. Открыть страницу загрузки?",
@@ -144,6 +148,10 @@ LANGS = {
         "field_coords": "Coordinates",
         "convert_label": "Convert to:",
         "none": "None",
+"time_mode_label": "TIME MODE:",
+"time_local": "Local",
+"time_utc": "In-game (UTC)",
+"add_cmdr": "Add Commander name",
         "check_updates": "CHECK FOR UPDATES",
         "upd_found": "Update available!",
         "upd_msg": "New version {v} is available. Open download page?",
@@ -261,6 +269,7 @@ class EliteJournalReader:
         self.current_body = ""
         self.coords = ""
         self.current_station = ""
+        self.cmdr = ""
 
     def update_state(self):
         try:
@@ -280,7 +289,8 @@ class EliteJournalReader:
                                 self.current_body = data.get('Body', "")
                                 self.current_station = data.get('StationName', "") if data.get('Docked') else ""
                                 self.coords = ""
-
+                            elif event in ['Commander', 'LoadGame']:
+                                self.cmdr = data.get('Name', self.cmdr)
                             elif event == 'Docked':
                                 self.current_station = data.get('StationName', "")
                                 self.coords = ""
@@ -313,19 +323,26 @@ class EliteJournalReader:
         except Exception as e:
             print(f"Update state error: {e}")
 
-    def get_info(self):
+    def get_info(self, time_mode='local'):
         self.update_state()
         
         display_coords = self.coords
         if self.current_station:
             display_coords = f"({self.current_station})"
 
+       
+        if time_mode == 'utc':
+            t_struct = time.gmtime()
+        else:
+            t_struct = time.localtime()
+
         return {
             "system": re.sub(r'[\\/*?:"<>|]', "", self.current_system),
             "body": re.sub(r'[\\/*?:"<>|]', "", self.current_body.replace(self.current_system, "").strip()),
             "coords": display_coords,
-            "date": time.strftime("%Y-%m-%d"),
-            "time": time.strftime("%H-%M-%S")
+            "date": time.strftime("%Y-%m-%d", t_struct),
+            "time": time.strftime("%H-%M-%S", t_struct),
+            "cmdr": self.cmdr
         }
 
 def resource_path(relative_path):
@@ -702,7 +719,7 @@ class App:
         l = LANGS[self.config['lang']]
         settings_win = tk.Toplevel(self.root)
         settings_win.title(l['settings'])
-        settings_win.geometry("500x750")
+        settings_win.geometry("500x850")
         settings_win.configure(bg="#1e1e1e")
         settings_win.grab_set()
         settings_win.resizable(False, False)
@@ -713,17 +730,22 @@ class App:
         container = tk.Frame(settings_win, bg="#1e1e1e")
         container.pack(expand=True, fill="both", padx=30, pady=20)
 
-        # Поля ввода путей
+     
         s_entry = self.create_field(container, l['screen_dir'], self.config.get('screen_dir', ""))
         t_entry = self.create_field(container, l['target_dir'], self.config.get('target_dir', "")) 
         l_entry = self.create_field(container, l['logs_dir'], self.config.get('logs_dir', ""))
 
-        # Выбор языка
+      
         tk.Label(container, text=l['lang_label'], fg="#ff8c00", bg="#1e1e1e", font=("Segoe UI", 10, "bold")).pack(anchor="w", pady=(10, 5))
         lang_var = tk.StringVar(value=self.config.get('lang', 'RU'))
         tk.OptionMenu(container, lang_var, "RU", "EN").pack(anchor="w", fill="x", pady=(0, 10))
-
-        # Настройки формата
+        tk.Label(container, text=l['time_mode_label'], fg="#ff8c00", bg="#1e1e1e", font=("Segoe UI", 10, "bold")).pack(anchor="w", pady=(10, 5))
+        time_mode_var = tk.StringVar(value=self.config.get('time_mode', 'local'))
+        tm_frame = tk.Frame(container, bg="#1e1e1e")
+        tm_frame.pack(anchor="w", fill="x")
+        tk.Radiobutton(tm_frame, text=l['time_local'], variable=time_mode_var, value='local', bg="#1e1e1e", fg="white", selectcolor="#333").pack(side="left", padx=5)
+        tk.Radiobutton(tm_frame, text=l['time_utc'], variable=time_mode_var, value='utc', bg="#1e1e1e", fg="white", selectcolor="#333").pack(side="left", padx=5)
+        
         tk.Label(container, text=l['naming_format'], fg="#ff8c00", bg="#1e1e1e", font=("Segoe UI", 10, "bold")).pack(anchor="w", pady=(10, 5))
         
         format_frame = tk.Frame(container, bg="#1e1e1e")
@@ -734,6 +756,7 @@ class App:
             "show_time": tk.BooleanVar(value=self.config.get('show_time', True)),
             "show_body": tk.BooleanVar(value=self.config.get('show_body', True)),
             "show_coords": tk.BooleanVar(value=self.config.get('show_coords', True)),
+            "show_cmdr": tk.BooleanVar(value=self.config.get('show_cmdr', False)),
             "use_folders": tk.BooleanVar(value=self.config.get('use_folders', False)),
             "load_history": tk.BooleanVar(value=self.config.get('load_history', False))
         }
@@ -742,9 +765,9 @@ class App:
         checks_frame.pack(side="left")
         for text, key in [(l['add_date'], "show_date"), (l['add_time'], "show_time"), (l['add_body'], "show_body"), (l['add_coords'], "show_coords")]:
             tk.Checkbutton(checks_frame, text=text, variable=vars[key], bg="#1e1e1e", fg="#e0e0e0", selectcolor="#333").pack(anchor="w")
-        
+            
         self.temp_order = list(self.config.get("order", ["date", "time", "body", "coords"]))
-        
+        tk.Checkbutton(checks_frame, text=l['add_cmdr'], variable=vars["show_cmdr"], bg="#1e1e1e", fg="#e0e0e0", selectcolor="#333").pack(anchor="w")
         def open_order():
             win = OrderWindow(settings_win, self.temp_order, l)
             settings_win.wait_window(win.win)
@@ -752,12 +775,12 @@ class App:
 
         tk.Button(container, text=l['format_order'], command=open_order, bg="#444", fg="white", font=("Segoe UI", 9, "bold"), pady=5).pack(anchor="w", pady=5)
 
-        # Сортировка и история
+       
         tk.Label(container, text=l['folders_label'], fg="#ff8c00", bg="#1e1e1e", font=("Segoe UI", 10, "bold")).pack(anchor="w", pady=(15, 5))
         tk.Checkbutton(container, text=l['sort_folders'], variable=vars["use_folders"], bg="#1e1e1e", fg="#e0e0e0", selectcolor="#333").pack(anchor="w")
         tk.Checkbutton(container, text=l['load_history'], variable=vars["load_history"], bg="#1e1e1e", fg="#e0e0e0", selectcolor="#333", wraplength=400, justify="left").pack(anchor="w", pady=5)
 
-        # Конвертация
+       
         conv_frame = tk.Frame(container, bg="#1e1e1e")
         conv_frame.pack(anchor="w", fill="x", pady=5)
         tk.Label(conv_frame, text=l['convert_label'], fg="#aaa", bg="#1e1e1e").pack(side="left")
@@ -777,6 +800,8 @@ class App:
                 "show_date": vars["show_date"].get(), "show_time": vars["show_time"].get(),
                 "show_body": vars["show_body"].get(), "show_coords": vars["show_coords"].get(),
                 "use_folders": vars["use_folders"].get(), "load_history": vars["load_history"].get(),
+                "time_mode": time_mode_var.get(),
+                "show_cmdr": vars["show_cmdr"].get(),
                 "order": self.temp_order, "convert_to": conv_var.get()
             }
             if os.path.exists(new_conf['screen_dir']) and os.path.exists(new_conf['logs_dir']):
@@ -854,7 +879,7 @@ class Handler(FileSystemEventHandler):
         time.sleep(1.5) 
         if not os.path.exists(path): return
         
-        info = self.app.reader.get_info()
+        info = self.app.reader.get_info(time_mode=self.app.config.get('time_mode', 'local'))
 
         prefix_parts = []
         if self.app.config.get("show_date"): prefix_parts.append(info['date'])
@@ -875,7 +900,8 @@ class Handler(FileSystemEventHandler):
             new_fn = f"{prefix} ({inner_content})"
         else:
             new_fn = f"({inner_content})"
-            
+        if self.app.config.get("show_cmdr") and info.get('cmdr'):
+            new_fn = f"{new_fn} {info['cmdr']}"
         conv_to = self.app.config.get('convert_to', 'none')
         ext = f".{conv_to}" if conv_to != 'none' else os.path.splitext(path)[1]
         
