@@ -891,12 +891,11 @@ class Handler(FileSystemEventHandler):
             return
         
         info = self.app.reader.get_info(time_mode=self.app.config.get('time_mode', 'local'))
-        
-        # 1. Получаем порядок полей из конфига
-        # Если в конфиге еще нет cmdr, он будет в конце по умолчанию
+
+
         order = self.app.config.get("order", ["date", "time", "body", "coords", "cmdr"])
 
-        # 2. Собираем части имени на основе выбранного порядка
+
         name_parts = []
         for key in order:
             if key == "date" and self.app.config.get("show_date"):
@@ -910,13 +909,13 @@ class Handler(FileSystemEventHandler):
             elif key == "cmdr" and self.app.config.get("show_cmdr") and info.get('cmdr'):
                 name_parts.append(info['cmdr'])
 
-        # 3. Формируем итоговую строку (если всё выключено, используем систему)
+
         if name_parts:
             new_fn = " ".join(filter(None, name_parts))
         else:
             new_fn = info['system']
 
-        # Дальше стандартная логика сохранения
+
         conv_to = self.app.config.get('convert_to', 'none')
         ext = f".{conv_to}" if conv_to != 'none' else os.path.splitext(path)[1]
         
