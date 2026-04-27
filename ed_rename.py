@@ -27,8 +27,8 @@ except ImportError:
     winerror = None
 
 # ----- ВЕРСИЯ ПРИЛОЖЕНИЯ -----
-VERSION = "1.1"
-GITHUB_REPO = "PROtoKOPs/Elite-Dangerous-Renamer"
+VERSION = "1.2"
+GITHUB_REPO = "PROtoKOPs/Elite-Dangerous-Photographer"
 CONFIG_FILE = "ed_config.json"
 CACHE_DB = "thumbs_cache.db"
 MAX_CACHE_SIZE = 500  
@@ -51,7 +51,7 @@ init_cache_db()
 
 LANGS = {
     "RU": {
-        "title": "Elite Dangerous Renamer v{VERSION}",
+        "title": "Elite Dangerous Photographer v{VERSION}",
         "monitoring_active": "● СИСТЕМА МОНИТОРИНГА АКТИВНА",
         "monitoring_off": "○ МОНИТОРИНГ ВЫКЛЮЧЕН",
         "settings": "НАСТРОЙКИ",
@@ -81,10 +81,11 @@ LANGS = {
         "already_running": "Программа уже запущена!",
         "view_grid": "СЕТКА",
         "view_list": "СПИСОК",
-        "yes": "ДА",
+        "yes": "СОХРАНИТЬ",
         "no": "НЕТ",
-        "format_order": "НАСТРОИТЬ ПОРЯДОК",
-        "order_title": "Настройка порядка",
+        "field_cmdr": "Имя командира",
+        "format_order": "ПОРЯДОК",
+        "order_title": "Порядок",
         "reset": "СБРОС",
         "up": "Выше",
         "down": "Ниже",
@@ -105,7 +106,7 @@ LANGS = {
         "upd_error": "Не удалось проверить обновления."
     },
     "EN": {
-        "title": "Elite Dangerous Renamer v{VERSION}",
+        "title": "Elite Dangerous Photographer v{VERSION}",
         "monitoring_active": "● MONITORING SYSTEM ACTIVE",
         "monitoring_off": "○ MONITORING DISABLED",
         "settings": "SETTINGS",
@@ -135,10 +136,11 @@ LANGS = {
         "already_running": "Application is already running!",
         "view_grid": "GRID",
         "view_list": "LIST",
-        "yes": "YES",
+        "yes": "SAVE",
         "no": "NO",
-        "format_order": "CONSTRUCT ORDER",
-        "order_title": "Naming Order",
+        "field_cmdr": "Commander Name",
+        "format_order": "ORDER",
+        "order_title": "Order",
         "reset": "RESET",
         "up": "Up",
         "down": "Down",
@@ -171,13 +173,14 @@ class OrderWindow:
         
         self.lang_keys = lang_keys
         self.order = list(current_order)
-        self.default_order = ["date", "time", "body", "coords"]
+        self.default_order = ["date", "time", "body", "coords", "cmdr"]
         
         self.display_names = {
             "date": lang_keys['field_date'],
             "time": lang_keys['field_time'],
             "body": lang_keys['field_body'],
-            "coords": lang_keys['field_coords']
+            "coords": lang_keys['field_coords'],
+            "cmdr": lang_keys.get('field_cmdr', 'Commander')
         }
 
         tk.Label(self.win, text=lang_keys['order_title'], fg="#ff8c00", bg="#1e1e1e", font=("Segoe UI", 12, "bold")).pack(pady=10)
@@ -419,7 +422,7 @@ class App:
                 with open(CONFIG_FILE, 'r', encoding='utf-8') as f:
                     cfg = json.load(f)
                     if "order" not in cfg:
-                        cfg["order"] = ["date", "time", "body", "coords"]
+                        cfg["order"] = ["date", "time", "body", "coords", "cmdr"]
                     if "target_dir" not in cfg:
                         cfg["target_dir"] = ""
                     if "convert_to" not in cfg:
@@ -766,7 +769,10 @@ class App:
         for text, key in [(l['add_date'], "show_date"), (l['add_time'], "show_time"), (l['add_body'], "show_body"), (l['add_coords'], "show_coords")]:
             tk.Checkbutton(checks_frame, text=text, variable=vars[key], bg="#1e1e1e", fg="#e0e0e0", selectcolor="#333").pack(anchor="w")
             
-        self.temp_order = list(self.config.get("order", ["date", "time", "body", "coords"]))
+        current_order = list(self.config.get("order", ["date", "time", "body", "coords"]))
+        if "cmdr" not in current_order:
+            current_order.append("cmdr")
+        self.temp_order = current_order
         tk.Checkbutton(checks_frame, text=l['add_cmdr'], variable=vars["show_cmdr"], bg="#1e1e1e", fg="#e0e0e0", selectcolor="#333").pack(anchor="w")
         def open_order():
             win = OrderWindow(settings_win, self.temp_order, l)
@@ -870,38 +876,47 @@ class App:
                 except Exception as e: messagebox.showerror("Error", str(e))
 
 class Handler(FileSystemEventHandler):
-    def __init__(self, app): self.app = app
+    def __init__(self, app): 
+        self.app = app
+
     def on_created(self, event):
-        if event.is_directory or not event.src_path.lower().endswith(('.png', '.jpg', '.bmp')): return
+        if event.is_directory or not event.src_path.lower().endswith(('.png', '.jpg', '.bmp')): 
+            return
         path = event.src_path
-        if os.path.dirname(os.path.abspath(path)) != os.path.abspath(self.app.config['screen_dir']): return
+        if os.path.dirname(os.path.abspath(path)) != os.path.abspath(self.app.config['screen_dir']): 
+            return
         
         time.sleep(1.5) 
-        if not os.path.exists(path): return
+        if not os.path.exists(path): 
+            return
         
         info = self.app.reader.get_info(time_mode=self.app.config.get('time_mode', 'local'))
+        
+        # 1. Получаем порядок полей из конфига
+        # Если в конфиге еще нет cmdr, он будет в конце по умолчанию
+        order = self.app.config.get("order", ["date", "time", "body", "coords", "cmdr"])
 
-        prefix_parts = []
-        if self.app.config.get("show_date"): prefix_parts.append(info['date'])
-        if self.app.config.get("show_time"): prefix_parts.append(info['time'])
-        prefix = " ".join(filter(None, prefix_parts))
+        # 2. Собираем части имени на основе выбранного порядка
+        name_parts = []
+        for key in order:
+            if key == "date" and self.app.config.get("show_date"):
+                name_parts.append(info['date'])
+            elif key == "time" and self.app.config.get("show_time"):
+                name_parts.append(info['time'])
+            elif key == "body" and self.app.config.get("show_body") and info['body']:
+                name_parts.append(f"({info['body']})")
+            elif key == "coords" and self.app.config.get("show_coords") and info['coords']:
+                name_parts.append(info['coords'])
+            elif key == "cmdr" and self.app.config.get("show_cmdr") and info.get('cmdr'):
+                name_parts.append(info['cmdr'])
 
-        inner_parts = [info['system']]
-
-        if self.app.config.get("show_body") and info['body']:
-            inner_parts.append(f"— {info['body']}")
-
-        if self.app.config.get("show_coords") and info['coords']:
-            inner_parts.append(f"— {info['coords']}")
-            
-        inner_content = " ".join(filter(None, inner_parts))
-
-        if prefix:
-            new_fn = f"{prefix} ({inner_content})"
+        # 3. Формируем итоговую строку (если всё выключено, используем систему)
+        if name_parts:
+            new_fn = " ".join(filter(None, name_parts))
         else:
-            new_fn = f"({inner_content})"
-        if self.app.config.get("show_cmdr") and info.get('cmdr'):
-            new_fn = f"{new_fn} {info['cmdr']}"
+            new_fn = info['system']
+
+        # Дальше стандартная логика сохранения
         conv_to = self.app.config.get('convert_to', 'none')
         ext = f".{conv_to}" if conv_to != 'none' else os.path.splitext(path)[1]
         
