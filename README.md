@@ -1,6 +1,6 @@
-# Elite Dangerous Renamer
+# Elite Dangerous Photographer
 
-Elite Dangerous Renamer is an advanced tool for automating a space explorer's life. Stop guessing where that beautiful screenshot was taken! EDR picks up new captures on the fly, extracts data from game logs, and transforms standard Screenshot_0001.png files into informative ones containing system names, bodies, and even coordinates.
+Elite Dangerous Photographer is an advanced tool for automating a space explorer's life. Stop guessing where that beautiful screenshot was taken! EDR picks up new captures on the fly, extracts data from game logs, and transforms standard Screenshot_0001.png files into informative ones containing system names, bodies, and even coordinates.
 
 ## Key Features
 
@@ -22,8 +22,9 @@ You can fully customize the order of elements in the filename:
 2. Time (HH-MM-SS)
 3. Celestial Body
 4. Coordinates
+5. CMDR Name
 
-### Result Example: 2026-04-25 15-19-10 (Phrua Flyuae ZE-A e7 — A 3 a — [46.29, -120.97])
+### Result Example: 2026-04-25 15-19-10 (Phrua Flyuae ZE-A e7 — A 3 a — [46.29, -120.97]) Explorer123
 
 Your history deserves beautiful names. Fly safe, Commander! o7
 
