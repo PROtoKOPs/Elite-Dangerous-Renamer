@@ -1,6 +1,6 @@
 # Elite Dangerous Photographer
 
-Elite Dangerous Photographer is an advanced tool for automating a space explorer's life. Stop guessing where that beautiful screenshot was taken! EDR picks up new captures on the fly, extracts data from game logs, and transforms standard Screenshot_0001.png files into informative ones containing system names, bodies, and even coordinates.
+Elite Dangerous Photographer is an advanced tool for automating a space explorer's life. Stop guessing where that beautiful screenshot was taken! EDP picks up new captures on the fly, extracts data from game logs, and transforms standard Screenshot_0001.png files into informative ones containing system names, bodies, and even coordinates.
 
 ## Key Features
 
