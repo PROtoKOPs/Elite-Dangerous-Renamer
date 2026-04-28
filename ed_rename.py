@@ -745,7 +745,8 @@ class App:
                 "show_body": vars["show_body"].get(), "show_coords": vars["show_coords"].get(),
                 "use_folders": vars["use_folders"].get(), "load_history": vars["load_history"].get(),
                 "time_mode": time_mode_var.get(),
-                "show_cmdr": vars["show_cmdr"].get()
+                "show_cmdr": vars["show_cmdr"].get(),
+                "convert_to": conv_var.get()
             }
             if os.path.exists(new_conf['screen_dir']) and os.path.exists(new_conf['logs_dir']):
                 self.save_config(new_conf)
