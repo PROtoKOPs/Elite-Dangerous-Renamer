@@ -13,6 +13,7 @@ import io
 import sqlite3
 import requests
 import webbrowser
+import winsound
 from PIL import Image, ImageTk
 from threading import Thread
 from concurrent.futures import ThreadPoolExecutor
@@ -27,7 +28,7 @@ except ImportError:
     winerror = None
 
 # ----- ВЕРСИЯ ПРИЛОЖЕНИЯ -----
-VERSION = "1.2.1"
+VERSION = "1.3"
 GITHUB_REPO = "PROtoKOPs/Elite-Dangerous-Photographer"
 CONFIG_FILE = "ed_config.json"
 CACHE_DB = "thumbs_cache.db"
@@ -99,6 +100,7 @@ LANGS = {
 "time_local": "Местное",
 "time_utc": "Игровое (UTC)",
 "add_cmdr": "Добавлять имя командира",
+"sound_label": "ЗВУК УВЕДОМЛЕНИЯ:",
         "check_updates": "ПРОВЕРИТЬ ОБНОВЛЕНИЯ",
         "upd_found": "Доступно обновление!",
         "upd_msg": "Найдена новая версия {v}. Открыть страницу загрузки?",
@@ -154,6 +156,7 @@ LANGS = {
 "time_local": "Local",
 "time_utc": "In-game (UTC)",
 "add_cmdr": "Add Commander name",
+"sound_label": "NOTIFICATION SOUND:",
         "check_updates": "CHECK FOR UPDATES",
         "upd_found": "Update available!",
         "upd_msg": "New version {v} is available. Open download page?",
@@ -162,7 +165,45 @@ LANGS = {
     }
 }
 
+def get_base_path():
 
+    if getattr(sys, 'frozen', False):
+        return os.path.dirname(sys.executable)
+    return os.path.dirname(os.path.abspath(__file__))
+
+def get_sounds_dir():
+
+    base_path = get_base_path()
+    path = os.path.join(base_path, "sounds")
+    
+
+    if not os.path.exists(path):
+        os.makedirs(path)
+    
+    readme_path = os.path.join(path, "README.txt")
+    
+    if not os.path.exists(readme_path):
+        content = (
+            "=== Elite Dangerous Photographer - Sounds Guide ===\n\n"
+            "[RU]\n"
+            "1. Положите в эту папку любые звуковые файлы в формате .wav\n"
+            "2. Откройте настройки в приложении\n"
+            "3. В выпадающем списке 'ЗВУК УВЕДОМЛЕНИЯ' выберите ваш файл\n\n"
+            "Примечание: Программа видит файлы только в формате .wav\n\n"
+            "--------------------------------------------------\n\n"
+            "[EN]\n"
+            "1. Place any .wav sound files in this folder\n"
+            "2. Open the application settings\n"
+            "3. Select your file from the 'NOTIFICATION SOUND' dropdown menu\n\n"
+            "Note: Only .wav files are supported\n"
+        )
+        try:
+            with open(readme_path, "w", encoding="utf-8") as f:
+                f.write(content)
+        except Exception as e:
+            print(f"Не удалось создать README: {e}")
+            
+    return path
 class CustomConfirm:
     def __init__(self, parent, title, message, lang_keys):
         self.result = False
@@ -378,12 +419,47 @@ class App:
         lang_win.protocol("WM_DELETE_WINDOW", self.root.quit)
         tk.Label(lang_win, text="Choose your language:\nВыберите язык:", fg="white", bg="#1e1e1e").pack(pady=20)
         def set_lang(l):
+            home = os.path.expanduser("~")
+            
+            possible_screens = [
+                os.path.join(home, "OneDrive", "Изображения", "Frontier Developments", "Elite Dangerous"),
+                os.path.join(home, "OneDrive", "Pictures", "Frontier Developments", "Elite Dangerous"),
+                os.path.join(home, "Pictures", "Frontier Developments", "Elite Dangerous"),
+                os.path.join(home, "Изображения", "Frontier Developments", "Elite Dangerous")
+            ]
+            
+
+            default_screens = possible_screens[2]
+            for p in possible_screens:
+                if os.path.exists(p):
+                    default_screens = p
+                    break
+            
+            possible_logs = [
+                os.path.join(home, "OneDrive", "Saved Games", "Frontier Developments", "Elite Dangerous"),
+                os.path.join(home, "Saved Games", "Frontier Developments", "Elite Dangerous")
+            ]
+            
+            default_logs = possible_logs[1]
+            for p in possible_logs:
+                if os.path.exists(p):
+                    default_logs = p
+                    break
+
             self.config = {
                 "lang": l, 
+                "screen_dir": default_screens, 
+                "logs_dir": default_logs,
                 "target_dir": "", 
                 "convert_to": "none",
                 "use_folders": False,
-                "load_history": False
+                "load_history": False,
+                "show_date": True,
+                "show_time": True,
+                "show_body": True,
+                "show_coords": True,
+                "time_mode": "local",
+                "show_cmdr": False
             }
             lang_win.destroy()
             self.open_settings_window(is_initial=True)
@@ -585,12 +661,19 @@ class App:
             if self.observer: self.observer.stop(); self.observer = None
 
     def start_watching(self):
-        if self.observer: self.observer.stop()
+        if self.observer: 
+            self.observer.stop()
         try:
+            path_to_watch = os.path.normpath(self.config['screen_dir'])
+            if not os.path.exists(path_to_watch):
+                print(f"Путь не найден: {path_to_watch}")
+                return
+                
             self.observer = Observer()
-            self.observer.schedule(Handler(self), self.config['screen_dir'], recursive=True)
+            self.observer.schedule(Handler(self), path_to_watch, recursive=False) # recursive=False лучше для производительности
             self.observer.start()
-        except: pass
+        except Exception as e:
+            print(f"Ошибка запуска мониторинга: {e}")
 
     def add_log(self, text, path):
         ts = time.strftime('%H:%M:%S'); entry = f"[{ts}] {text}"
@@ -671,7 +754,7 @@ class App:
         l = LANGS[self.config['lang']]
         settings_win = tk.Toplevel(self.root)
         settings_win.title(l['settings'])
-        settings_win.geometry("500x850")
+        settings_win.geometry("500x890")
         settings_win.configure(bg="#1e1e1e")
         settings_win.grab_set()
         settings_win.resizable(False, False)
@@ -735,6 +818,29 @@ class App:
         opt_menu.config(bg="#333", fg="white", width=10)
         opt_menu.pack(side="left", padx=10)
 
+        tk.Label(container, text=l['sound_label'], fg="#ff8c00", bg="#1e1e1e", font=("Segoe UI", 10, "bold")).pack(anchor="w", pady=(15, 5))
+        
+
+        sounds_path = get_sounds_dir()
+        wav_files = [f for f in os.listdir(sounds_path) if f.endswith('.wav')]
+        
+
+        sound_options = ["none", "Windows Default"] + wav_files
+        
+        sound_var = tk.StringVar(value=self.config.get('success_sound', 'none'))
+        
+
+        if sound_var.get() not in sound_options:
+            sound_var.set("none")
+
+        sound_menu = tk.OptionMenu(container, sound_var, *sound_options)
+        sound_menu.config(bg="#333", fg="white", activebackground="#ff8c00")
+        sound_menu.pack(anchor="w", fill="x")
+
+
+        hint_text = "Place your .wav files into /sounds folder" if self.config['lang'] == "EN" else "Положите .wav файлы в папку sounds"
+        tk.Label(container, text=hint_text, fg="#555", bg="#1e1e1e", font=("Segoe UI", 8, "italic")).pack(anchor="w", pady=(2, 0))
+
         tk.Button(container, text=l['check_updates'], bg="#333", fg="#ff8c00", 
                   font=("Segoe UI", 8, "bold"), command=lambda: self.check_for_updates(False)).pack(pady=(20, 10))
 
@@ -746,6 +852,7 @@ class App:
                 "use_folders": vars["use_folders"].get(), "load_history": vars["load_history"].get(),
                 "time_mode": time_mode_var.get(),
                 "show_cmdr": vars["show_cmdr"].get(),
+                "success_sound": sound_var.get(),
                 "convert_to": conv_var.get()
             }
             if os.path.exists(new_conf['screen_dir']) and os.path.exists(new_conf['logs_dir']):
@@ -814,15 +921,25 @@ class App:
                 except Exception as e: messagebox.showerror("Error", str(e))
 
 class Handler(FileSystemEventHandler):
-    def __init__(self, app): self.app = app
+    def __init__(self, app): 
+        self.app = app
+
     def on_created(self, event):
-        if event.is_directory or not event.src_path.lower().endswith(('.png', '.jpg', '.bmp')): return
-        path = event.src_path
-        if os.path.dirname(os.path.abspath(path)) != os.path.abspath(self.app.config['screen_dir']): return
+
+        if event.is_directory or not event.src_path.lower().endswith(('.png', '.jpg', '.bmp', '.jpeg')): 
+            return
         
+        src_path = os.path.normpath(os.path.abspath(event.src_path))
+
+        config_dir = os.path.normpath(os.path.abspath(self.app.config['screen_dir']))
+        
+        if os.path.dirname(src_path).lower() != config_dir.lower(): 
+            return
+
         time.sleep(1.5) 
-        if not os.path.exists(path): return
-        
+        if not os.path.exists(src_path): 
+            return
+
         info = self.app.reader.get_info(time_mode=self.app.config.get('time_mode', 'local'))
 
         prefix_parts = []
@@ -831,49 +948,56 @@ class Handler(FileSystemEventHandler):
         prefix = " ".join(filter(None, prefix_parts))
 
         inner_parts = [info['system']]
-
         if self.app.config.get("show_body") and info['body']:
             inner_parts.append(f"— {info['body']}")
-
         if self.app.config.get("show_coords") and info['coords']:
             inner_parts.append(f"— {info['coords']}")
             
         inner_content = " ".join(filter(None, inner_parts))
-
-        if prefix:
-            new_fn = f"{prefix} ({inner_content})"
-        else:
-            new_fn = f"({inner_content})"
+        new_fn = f"{prefix} ({inner_content})" if prefix else f"({inner_content})"
+        
         if self.app.config.get("show_cmdr") and info.get('cmdr'):
             new_fn = f"{new_fn} {info['cmdr']}"
+
         conv_to = self.app.config.get('convert_to', 'none')
-        ext = f".{conv_to}" if conv_to != 'none' else os.path.splitext(path)[1]
+        ext = f".{conv_to}" if conv_to != 'none' else os.path.splitext(src_path)[1]
         
-        target = os.path.join(self.app.config.get('target_dir') or self.app.config['screen_dir'], 
-                              info['system'] if self.app.config['use_folders'] else "")
+        target_base = self.app.config.get('target_dir') or self.app.config['screen_dir']
+        target_path = os.path.join(target_base, info['system'] if self.app.config['use_folders'] else "")
         
         try:
-            if not os.path.exists(target): os.makedirs(target)
-            new_path = os.path.join(target, new_fn + ext)
+            if not os.path.exists(target_path): 
+                os.makedirs(target_path)
             
-            if os.path.exists(new_path): 
-                new_fn_with_ts = f"{new_fn}_{int(time.time())}"
-                new_path = os.path.join(target, new_fn_with_ts + ext)
-                final_log_name = new_fn_with_ts
-            else:
-                final_log_name = new_fn
-            
+            final_path = os.path.join(target_path, new_fn + ext)
+
+            if os.path.exists(final_path): 
+                new_fn = f"{new_fn}_{int(time.time())}"
+                final_path = os.path.join(target_path, new_fn + ext)
+
             if conv_to != 'none':
-                img = Image.open(path)
-                (img.convert("RGB") if conv_to == 'jpg' else img).save(new_path)
-                os.remove(path)
+                with Image.open(src_path) as img:
+                    if conv_to.lower() == 'jpg':
+                        img.convert("RGB").save(final_path, "JPEG", quality=95)
+                    else:
+                        img.save(final_path, conv_to.upper())
+                os.remove(src_path)
             else:
-                shutil.move(path, new_path)
-            
-            self.app.root.after(100, lambda: self.app.add_log(final_log_name, new_path))
+                shutil.move(src_path, final_path)
+
+            sound_name = self.app.config.get('success_sound', 'none')
+            if sound_name == "Windows Default":
+
+                winsound.MessageBeep(winsound.MB_ICONASTERISK)
+            elif sound_name != 'none':
+                sound_path = os.path.join(get_sounds_dir(), sound_name)
+                if os.path.exists(sound_path):
+                    winsound.PlaySound(sound_path, winsound.SND_FILENAME | winsound.SND_ASYNC)
+
+            self.app.root.after(100, lambda: self.app.add_log(new_fn, final_path))
             
         except Exception as e:
-            print(f"Error processing screenshot: {e}")
+            print(f"Ошибка при обработке скриншота: {e}")
 
     def on_deleted(self, event): 
         if event.is_directory: return
