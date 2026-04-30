@@ -393,30 +393,26 @@ class App:
         self.root.destroy()
         os._exit(0)
     def check_width_for_burger(self, event):
-        # Если это событие самого главного окна (а не его дочерних элементов)
         if event.widget == self.root:
-            # Порог ширины (например, 650 пикселей), при котором кнопки начинают тесниться
+
             threshold = 650 
             if event.width < threshold:
-                self.full_btn_frame.pack_forget() # Прячем панель кнопок
-                self.burger_btn.pack(side="right", padx=20) # Показываем бургер
+                self.full_btn_frame.pack_forget()
+                self.burger_btn.pack(side="right", padx=20)
             else:
-                self.burger_btn.pack_forget() # Прячем бургер
-                self.full_btn_frame.pack(side="right", padx=20) # Возвращаем кнопки
+                self.burger_btn.pack_forget()
+                self.full_btn_frame.pack(side="right", padx=20)
 
     def show_burger_menu(self):
         self.burger_menu.delete(0, tk.END)
         l = LANGS[self.config['lang']]
         
-        # Добавляем пункты в меню
         self.burger_menu.add_command(label=self.buttons_data[0][0], command=self.buttons_data[0][1])
-        # Переключатель мониторинга прямо в меню
         mon_label = f"✓ {l['monitoring_active']}" if self.monitoring_on.get() else l['monitoring_off']
         self.burger_menu.add_command(label=mon_label, command=lambda: [self.monitoring_on.set(not self.monitoring_on.get()), self.toggle_monitoring()])
         self.burger_menu.add_separator()
         self.burger_menu.add_command(label=self.buttons_data[1][0], command=self.buttons_data[1][1])
-        
-        # Показываем меню под кнопкой бургера
+
         x = self.burger_btn.winfo_rootx()
         y = self.burger_btn.winfo_rooty() + self.burger_btn.winfo_height()
         self.burger_menu.post(x, y)
@@ -526,17 +522,13 @@ class App:
         self.status_label = tk.Label(self.header, text=status_text, fg=status_color, bg="#2d2d2d", font=("Segoe UI", 10, "bold"))
         self.status_label.pack(side="left", padx=20, pady=15)
 
-        # Контейнер для обычных кнопок
         self.full_btn_frame = tk.Frame(self.header, bg="#2d2d2d")
-        self.full_btn_frame.pack(side="right", padx=20)
 
-        # Сами кнопки (сохраняем в self, чтобы обращаться из меню)
         self.buttons_data = [
             (l['view_grid'] if self.view_mode == "list" else l['view_list'], self.toggle_view),
             (l['settings'], self.open_settings_window)
         ]
 
-        # Кнопки для полной панели
         self.view_btn = tk.Button(self.full_btn_frame, text=self.buttons_data[0][0], 
                                   bg="#444", fg="white", relief="flat", command=self.buttons_data[0][1], width=10)
         self.view_btn.pack(side="left", padx=5)
@@ -550,27 +542,34 @@ class App:
                                       bg="#444", fg="white", relief="flat", command=self.buttons_data[1][1], width=10)
         self.settings_btn.pack(side="left", padx=5)
 
-        # Кнопка БУРГЕР (изначально скрыта)
         self.burger_btn = tk.Button(self.header, text="☰", bg="#2d2d2d", fg="#ff8c00", 
                                     font=("Segoe UI", 16, "bold"), relief="flat", command=self.show_burger_menu)
         
-        # Создаем выпадающее меню для бургера
         self.burger_menu = tk.Menu(self.root, tearoff=0, bg="#2d2d2d", fg="white", activebackground="#ff8c00", font=("Segoe UI", 10))
 
-        # Контент
+        self.refresh_nav_bar() 
+
         self.content_frame = tk.Frame(self.root, bg="#1e1e1e")
         self.content_frame.pack(fill="both", expand=True)
 
         if self.view_mode == "list": self.setup_list_view()
         else: self.setup_grid_view()
 
-        # Привязываем проверку ширины при изменении размера окна
         self.root.bind("<Configure>", self.check_width_for_burger)
 
         self.reader = EliteJournalReader(self.config['logs_dir'])
         if self.config.get('load_history', False): self.load_history_list()
         if self.monitoring_on.get(): self.start_watching()
 
+    def refresh_nav_bar(self):
+        threshold = 650 
+        current_width = self.root.winfo_width()
+        if current_width < threshold:
+            self.full_btn_frame.pack_forget()
+            self.burger_btn.pack(side="right", padx=20)
+        else:
+            self.burger_btn.pack_forget()
+            self.full_btn_frame.pack(side="right", padx=20)
     def setup_list_view(self):
         self.log_box = tk.Listbox(self.content_frame, bg="#121212", fg="#00d2ff", font=("Consolas", 10), borderwidth=0, highlightthickness=0, selectbackground="#333")
         self.log_box.pack(fill="both", expand=True, padx=5)
@@ -707,7 +706,7 @@ class App:
                 return
                 
             self.observer = Observer()
-            self.observer.schedule(Handler(self), path_to_watch, recursive=False) # recursive=False лучше для производительности
+            self.observer.schedule(Handler(self), path_to_watch, recursive=False)
             self.observer.start()
         except Exception as e:
             print(f"Ошибка запуска мониторинга: {e}")
@@ -791,18 +790,16 @@ class App:
         l = LANGS[self.config['lang']]
         settings_win = tk.Toplevel(self.root)
         settings_win.title(l['settings'])
-        
-        # --- ИСПРАВЛЕНИЕ: Логика размера и скролла ---
+
         settings_win.resizable(False, True)
         settings_win.geometry("500x890")
-        settings_win.minsize(500, 400) # Минимально допустимая высота окна
+        settings_win.minsize(500, 400)
         settings_win.configure(bg="#1e1e1e")
         settings_win.grab_set()
         
         if is_initial: 
             settings_win.protocol("WM_DELETE_WINDOW", self.root.quit)
 
-        # Создаем Canvas и Scrollbar для прокрутки
         canvas = tk.Canvas(settings_win, bg="#1e1e1e", highlightthickness=0)
         scrollbar = ttk.Scrollbar(settings_win, orient="vertical", command=canvas.yview)
         scrollable_frame = tk.Frame(canvas, bg="#1e1e1e")
@@ -815,11 +812,9 @@ class App:
         canvas.create_window((0, 0), window=scrollable_frame, anchor="nw", width=480)
         canvas.configure(yscrollcommand=scrollbar.set)
 
-        # Упаковка скролла
         canvas.pack(side="left", fill="both", expand=True, padx=(10, 0))
         scrollbar.pack(side="right", fill="y")
 
-        # Привязка колесика мыши
         def _on_mousewheel(event):
             canvas.yview_scroll(int(-1*(event.delta/120)), "units")
         canvas.bind_all("<MouseWheel>", _on_mousewheel)
@@ -827,7 +822,6 @@ class App:
         container = tk.Frame(scrollable_frame, bg="#1e1e1e")
         container.pack(expand=True, fill="both", padx=20, pady=20)
 
-        # --- Дальше идет твой существующий код полей внутри container ---
         s_entry = self.create_field(container, l['screen_dir'], self.config.get('screen_dir', ""))
         t_entry = self.create_field(container, l['target_dir'], self.config.get('target_dir', "")) 
         l_entry = self.create_field(container, l['logs_dir'], self.config.get('logs_dir', ""))
@@ -894,7 +888,6 @@ class App:
             }
             if os.path.exists(new_conf['screen_dir']) and os.path.exists(new_conf['logs_dir']):
                 self.save_config(new_conf)
-                # Отвязываем события мыши перед закрытием
                 canvas.unbind_all("<MouseWheel>")
                 settings_win.destroy()
                 self.apply_theme_and_start()
