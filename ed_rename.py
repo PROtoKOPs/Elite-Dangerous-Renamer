@@ -14,6 +14,10 @@ import sqlite3
 import requests
 import webbrowser
 import winsound
+import pystray
+from pystray import MenuItem as item
+from PIL import Image
+import threading
 from PIL import Image, ImageTk
 from threading import Thread
 from concurrent.futures import ThreadPoolExecutor
@@ -105,7 +109,12 @@ LANGS = {
         "upd_found": "Доступно обновление!",
         "upd_msg": "Найдена новая версия {v}. Открыть страницу загрузки?",
         "upd_latest": "У вас установлена последняя версия.",
-        "upd_error": "Не удалось проверить обновления."
+        "upd_error": "Не удалось проверить обновления.",
+        "tray_open": "Развернуть / Скрыть",
+        "tray_screenshots": "Открыть папку скриншотов",
+        "tray_program": "Открыть папку программы",
+        "tray_settings": "Настройки",
+        "tray_exit": "Выход"
     },
     "EN": {
         "title": "Elite Dangerous Photographer v{VERSION}",
@@ -161,7 +170,12 @@ LANGS = {
         "upd_found": "Update available!",
         "upd_msg": "New version {v} is available. Open download page?",
         "upd_latest": "You are using the latest version.",
-        "upd_error": "Failed to check for updates."
+        "upd_error": "Failed to check for updates.",
+        "tray_open": "Show / Hide",
+        "tray_screenshots": "Open Screenshots Folder",
+        "tray_program": "Open Program Folder",
+        "tray_settings": "Settings",
+        "tray_exit": "Exit"
     }
 }
 
@@ -347,14 +361,22 @@ class App:
         self.grid_photos = {} 
         self.all_files = [] 
         self.executor = ThreadPoolExecutor(max_workers=4)
-        
+        self.root.bind("<Unmap>", lambda e: self.on_minimize(e))
+
         if not self.config:
             self.first_run_language_select()
         else:
+            self.create_tray_icon()
             self.apply_theme_and_start()
-            Thread(target=self.check_for_updates, args=(True,), daemon=True).start()
-     
+
+        Thread(target=self.check_for_updates, args=(True,), daemon=True).start()
+
+    def on_minimize(self, event):
+        if self.root.state() == 'iconic':
+            self.hide_window()
     def check_for_updates(self, silent=True):
+        if not self.config:
+            return
         l = LANGS[self.config['lang']]
         try:
 
@@ -383,15 +405,116 @@ class App:
         tk.Label(upd_bar, text=f"{l['upd_found']} ({version})", bg="#ff8c00", fg="black", font=("Segoe UI", 9, "bold")).pack(side="left", padx=10)
         tk.Button(upd_bar, text="DOWNLOAD", bg="black", fg="white", relief="flat", font=("Segoe UI", 8), 
                   command=lambda: webbrowser.open(f"https://github.com/{GITHUB_REPO}/releases")).pack(side="right", padx=10)
+    
+    def hide_window(self):
+
+        self.root.withdraw()
+        self.create_tray_icon()
+
+    def show_window(self, icon=None):
+
+        if icon:
+            icon.stop()
+        self.root.after(0, self.root.deiconify)
+
+    def create_tray_icon(self):
+        l = LANGS[self.config['lang']]
+        
+        base_path = get_base_path()
+        icon_path = os.path.join(base_path, "Edr.ico")
+
+        try:
+            image = Image.open(icon_path)
+        except:
+            image = Image.new('RGB', (64, 64), (0, 120, 215))
+
+        def open_src():
+
+            path = self.config.get('watch_dir', '')
+            if path and os.path.exists(path):
+                os.startfile(os.path.normpath(path))
+            else:
+                messagebox.showwarning(l.get('error', 'Error'), f"{l.get('path_error', 'Path not found')}:\n{path}")
+
+        def open_dst():
+
+            path = self.config.get('target_dir') or self.config.get('watch_dir', '')
+            
+            if path and os.path.exists(path):
+                os.startfile(os.path.normpath(path))
+            else:
+                messagebox.showwarning(l.get('error', 'Error'), f"{l.get('path_error', 'Path not found')}:\n{path}")
+
+        menu_items = (
+            item(l['tray_open'], self.toggle_window, default=True),
+            pystray.Menu.SEPARATOR,
+            item(l['tray_screenshots'], open_dst),
+            item(l['tray_program'], lambda: os.startfile(base_path)),
+            item(l['tray_settings'], lambda: self.root.after(0, self.open_settings_window)),
+            pystray.Menu.SEPARATOR,
+            item(l['tray_exit'], self.exit_action)
+        )
+
+        if hasattr(self, 'tray_icon'):
+            self.tray_icon.stop()
+            
+        self.tray_icon = pystray.Icon("ED_Photographer", image, "ED Photographer", menu_items)
+        threading.Thread(target=self.tray_icon.run, daemon=True).start()
+        
+    def update_tray_menu(self):
+
+             if hasattr(self, 'tray_icon'):
+                 self.create_tray_icon()
+
+    def toggle_window(self, icon=None, item=None):
+
+        if self.root.winfo_viewable():
+            self.root.after(0, self.root.withdraw)
+        else:
+            self.root.after(0, self.show_window)
+
+    def show_window(self):
+
+        self.root.deiconify()
+        self.root.lift()
+        self.root.focus_force()
+
+    def hide_window(self):
+
+        self.root.withdraw()
+
+    def on_minimize(self, event):
+
+        if self.root.state() == 'iconic':
+            self.hide_window()
+
+    def exit_action(self, icon):
+
+        icon.stop()
+        self.root.after(0, self.root.quit)
+
+    def exit_action(self, icon):
+        icon.stop()
+        self.root.after(0, self.root.quit)
+
 
     def on_closing(self):
         try:
+
+            self.config['window_geometry'] = self.root.geometry()
+            self.save_config(self.config)
+            
             if self.observer:
                 self.observer.stop()
-        except: pass
+        except Exception as e: 
+            print(f"Error saving geometry: {e}")
+            if hasattr(self, 'tray_icon'):
+                self.tray_icon.stop()
+        self.root.destroy()
         self.executor.shutdown(wait=False)
         self.root.destroy()
         os._exit(0)
+
     def check_width_for_burger(self, event):
         if event.widget == self.root:
 
@@ -494,7 +617,6 @@ class App:
         self.root.deiconify() 
         self.root.title(l['title'].format(VERSION=VERSION))
         
-        # Установка иконок
         icon_path = resource_path("Edr.ico")
         if os.path.exists(icon_path):
             try:
@@ -504,7 +626,16 @@ class App:
                 ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(myappid)
             except: pass
 
-        self.root.geometry("950x750")
+        
+        saved_geometry = self.config.get('window_geometry')
+        if saved_geometry:
+            try:
+                self.root.geometry(saved_geometry)
+            except:
+                self.root.geometry("950x750")
+        else:
+            self.root.geometry("950x750")
+
         self.root.minsize(400, 300)
         self.root.configure(bg="#1e1e1e")
         self.show_main_interface()
@@ -554,7 +685,19 @@ class App:
 
         if self.view_mode == "list": self.setup_list_view()
         else: self.setup_grid_view()
-
+        self.menu = tk.Menu(self.root, tearoff=0, bg="#2d2d2d", fg="white", activebackground="#ff8c00")
+        self.menu.add_command(label=l['open'], command=self.open_file)
+        self.menu.add_command(label=l['go_to_file'], command=self.open_folder)
+        self.menu.add_command(label=l['copy'], command=self.copy_to_clipboard)
+        self.menu.add_command(label=l['copy_location'], command=self.copy_location_to_clipboard)
+        self.menu.add_separator()
+        self.menu.add_command(
+            label=l['delete'], 
+            command=self.delete_file, 
+            foreground="#ff4444",
+            activebackground="#ff4444",
+            activeforeground="white"
+        )
         self.root.bind("<Configure>", self.check_width_for_burger)
 
         self.reader = EliteJournalReader(self.config['logs_dir'])
@@ -816,8 +959,11 @@ class App:
         scrollbar.pack(side="right", fill="y")
 
         def _on_mousewheel(event):
-            canvas.yview_scroll(int(-1*(event.delta/120)), "units")
-        canvas.bind_all("<MouseWheel>", _on_mousewheel)
+            if canvas.winfo_exists():
+                 canvas.yview_scroll(int(-1*(event.delta/120)), "units")
+
+
+        settings_win.bind("<MouseWheel>", _on_mousewheel)
 
         container = tk.Frame(scrollable_frame, bg="#1e1e1e")
         container.pack(expand=True, fill="both", padx=20, pady=20)
@@ -891,6 +1037,8 @@ class App:
                 canvas.unbind_all("<MouseWheel>")
                 settings_win.destroy()
                 self.apply_theme_and_start()
+                self.update_tray_menu() 
+                settings_win.destroy()
             else: 
                 messagebox.showerror("Error", l['path_error'])
         
